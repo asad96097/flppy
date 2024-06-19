@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #87CEEB; /* Change background color to match the game theme */
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 640px; /* Max width for larger screens */
+            height: 100%;
+            max-height: 360px; /* Max height for larger screens */
+        }
+        #gameOverModal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        #retryButton {
+            margin-top: 10px;
+            padding: 10px 20px;
+            border: none;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        #startButton {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            margin-top: 20px;
+            background-color: orange;
+            color: black;
+            border: none;
+            cursor: pointer;
+            border-radius: 10px;
+            font-size: 17px;
+            animation: blink 1s infinite;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7); /* Dark background for better visibility */
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 20px;
+        }
+        #levelText {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7); /* Dark background for better visibility */
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 20px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .start-text {
+            display: none;
+            font-size: 24px;
+            color: ;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        canvas {
+            display: block;
+            width: 100%; /* Make canvas responsive */
+            height: 100%; /* Make canvas responsive */
+            margin: 0 auto;
+            border: 2px solid black;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="gameOverModal">
+            Game Over<br>
+            <span id="finalScore"></span><br>
+            <button id="retryButton">Retry</button>
+        </div>
+        <div id="score">Score: 0</div>
+        <div id="levelText">Level 1</div>
+        <button id="startButton">Play</button>
+        <div id="startText" class="start-text">Start the game</div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const context = canvas.getContext('2d');
+
+        const gameContainer = document.getElementById('gameContainer');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const retryButton = document.getElementById('retryButton');
+        const startButton = document.getElementById('startButton');
+        const scoreElement = document.getElementById('score');
+        const startText = document.getElementById('startText');
+        const finalScore = document.getElementById('finalScore');
+        const levelText = document.getElementById('levelText'); // Added for displaying level number
+
+        function resizeCanvas() {
+            canvas.width = gameContainer.clientWidth;
+            canvas.height = gameContainer.clientHeight;
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Define arrays to hold images for each level
+        const birdImgs = [
+            '1/f4.png', // Level 1 bird image
+            '1/f2.png', // Level 2 bird image
+            '1/f3.png', // Level 3 bird image
+            '1/f1.png', // Level 4 bird image
+            '1/f5.png' // Level 5 bird image
+        ];
+
+        const pipeImgs = [ 
+            '1/p1.png',// Level 1 pipe image
+            '1/p2.png', // Level 2 pipe image
+            '1/p3.png', // Level 3 pipe image
+            '1/p4.png', // Level 4 pipe image
+            '1/p5.png' // Level 5 pipe image
+        ];
+
+        const backgroundImgs = [
+            '1/b1.jpg', // Level 1 background image
+            '1/b5.jpg', // Level 2 background image
+            '1/b3.png', // Level 3 background image
+            '1/b4.jpg',   // Level 4 background image
+            '1/b2.jpg' // Level 5 background image
+        ];
+
+        // Default images to be used if any image fails to load
+        const defaultBirdImg = '1/f1.png';
+        const defaultPipeImg = '1/p1.png';
+        const defaultBackgroundImg = '1/b1.jpg';
+
+        const levels = [
+            { pipeSpeed: 2, pipeGap: 150, gravity: 0.5, scoreThreshold: 15 }, // Level 1 (Easy)
+            { pipeSpeed: 2.6, pipeGap: 135, gravity: 0.6, scoreThreshold: 25 }, // Level 2 (Moderate)
+            { pipeSpeed: 2.8, pipeGap: 115, gravity: 0.7, scoreThreshold: 35 }, // Level 3 (Moderate)
+            { pipeSpeed: 2.9, pipeGap: 105, gravity: 0.8, scoreThreshold: 40 }, // Level 4 (Hard)
+            { pipeSpeed: 3, pipeGap: 100, gravity: 0.9, scoreThreshold: 45 } // Level 5 (Harder)
+        ];
+
+        let currentLevel = 0; // Start from Level 1
+        let gameStarted = false;
+        let birdAnimationId;
+
+        const bird = {
+            x: 150,
+            y: 150,
+            width: 44, // Adjust according to the size of your bird image
+            height: 34, // Adjust according to the size of your bird image
+            lift: -6, // Decrease the lift value to make the bird jump less
+            velocity: 0,
+            baseY: 150, // Base Y position for flapping animation
+            flapRange: 10, // Range for the flapping motion
+            flapSpeed: 0.1, // Speed of the flapping motion
+            flapOffset: 0 // Offset for the flapping motion
+        };
+
+        const pipes = [];
+        const pipeWidth = 42; // Adjust according to the width of your pipe image
+        let frameCount = 0;
+        let score = 0;
+        let flapCooldown = 0;
+
+        const birdImg = new Image();
+        const pipeImg = new Image();
+        const backgroundImg = new Image();
+
+        // Define sounds for the game
+        const flapSound = new Audio('1/flap2.mp3');
+        const pipePassSound = new Audio('https://www.soundjay.com/button/sounds/button-16.mp3');
+        const hitSound = new Audio('1/hitp.mp3');
+        const gameOverSound = new Audio('1/hitp.mp3');
+        const levelUpSound = new Audio('1/point2.mp3');
+        const swooshSound = new Audio('1/swoosh2.mp3');
+        const pointSound = new Audio('1/point2.mp3');
+
+        function drawBird() {
+            context.drawImage(birdImg, bird.x, bird.y, bird.width, bird.height);
+        }
+
+        function drawPipes() {
+            pipes.forEach(pipe => {
+                context.drawImage(pipeImg, pipe.x, 0, pipeWidth, pipe.top);
+                context.drawImage(pipeImg, pipe.x, canvas.height - pipe.bottom, pipeWidth, pipe.bottom);
+            });
+        }
+
+        function updateBird() {
+            bird.velocity += levels[currentLevel].gravity;
+            bird.y += bird.velocity;
+
+            if (bird.y + bird.height > canvas.height) {
+                bird.y = canvas.height - bird.height;
+                bird.velocity = 0;
+                endGame();
+            }
+
+            if (bird.y < 0) {
+                bird.y = 0;
+                bird.velocity = 0;
+            }
+        }
+
+        function updatePipes() {
+            if (frameCount % 90 === 0) {
+                const topHeight = Math.random() * (canvas.height - levels[currentLevel].pipeGap - 20) + 20;
+                const bottomHeight = canvas.height - topHeight - levels[currentLevel].pipeGap;
+                pipes.push({ x: canvas.width, top: topHeight, bottom: bottomHeight });
+            }
+
+            pipes.forEach(pipe => {
+                pipe.x -= levels[currentLevel].pipeSpeed;
+                if (pipe.x + pipeWidth < 0) {
+                    pipes.shift();
+                    score++;
+                    scoreElement.innerText = `Score: ${score}`;
+                    checkLevelChange();
+                    playPipePassSound(); // Play sound for passing pipe
+                    playPointSound(); // Play point sound when score increases
+                }
+
+                if (bird.x < pipe.x + pipeWidth && bird.x + bird.width > pipe.x &&
+                    (bird.y < pipe.top || bird.y + bird.height > canvas.height - pipe.bottom)) {
+                    playHitSound(); // Play sound for hitting pipe
+                    endGame();
+                }
+            });
+        }
+
+        function endGame() {
+            gameStarted = false;
+            playGameOverSound(); // Play game over sound
+            showGameOverModal();
+            cancelAnimationFrame(animationFrameId);
+            finalScore.innerText = `Final Score: ${score}`; // Display final score in the modal
+            
+        }
+
+        function resetGame() {
+            bird.y = 150;
+            bird.velocity = 0;
+            pipes.length = 0;
+            score = 0;
+            scoreElement.innerText = `Score: ${score}`;
+            gameOverModal.style.display = 'none';
+            startButton.style.display = 'block';
+            startText.style.display = 'block'; // Show start text
+            frameCount = 0;
+            currentLevel = 0; // Reset level to Level 1
+            drawInitialFrame();
+            startBirdAnimation(); // Start the bird flapping animation again
+        }
+
+        function drawInitialFrame() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); // Draw background image
+            drawBird();
+        }
+
+        function draw() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); // Draw background image
+            drawBird();
+            drawPipes();
+        }
+
+        function update() {
+            updateBird();
+            updatePipes();
+        }
+
+        let animationFrameId;
+        function loop() {
+            if (gameStarted) {
+                draw();
+                update();
+                frameCount++;
+                animationFrameId = requestAnimationFrame(loop);
+            }
+        }
+
+        function showGameOverModal() {
+            gameOverModal.style.display = 'block';
+        }
+
+        function checkLevelChange() {
+            const currentLevelData = levels[currentLevel];
+            if (score >= currentLevelData.scoreThreshold && currentLevel < levels.length - 1) {
+                currentLevel++;
+                levelText.innerText = `Level ${currentLevel + 1}`; // Display current level number
+                playLevelUpSound(); // Play level complete sound
+                updateImages(); // Update images for the new level
+            }
+        }
+
+        function updateImages() {
+            birdImg.src = birdImgs[currentLevel];
+            pipeImg.src = pipeImgs[currentLevel];
+            backgroundImg.src = backgroundImgs[currentLevel];
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameStarted) {
+                bird.velocity = bird.lift;
+                if (flapCooldown === 0) {
+                    playFlapSound(); // Play flap sound when bird jumps
+                    flapCooldown = 15; // Cooldown period to prevent sound from playing too frequently
+                }
+            }
+        });
+
+        retryButton.addEventListener('click', () => {
+            resetGame();
+        });
+
+        startButton.addEventListener('click', () => {
+            gameStarted = true;
+            startButton.style.display = 'none';
+            startText.style.display = 'none'; // Hide start text when game starts
+            levelText.innerText = `Level ${currentLevel + 1}`; // Display initial level number
+            playSwooshSound(); // Play swoosh sound when game starts
+            cancelAnimationFrame(birdAnimationId); // Stop the flapping animation
+            loop();
+        });
+
+        // Add touch event listener for mobile devices
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameStarted) {
+                bird.velocity = bird.lift;
+                if (flapCooldown === 0) {
+                    playFlapSound(); // Play flap sound when bird jumps
+                    flapCooldown = 15; // Cooldown period to prevent sound from playing too frequently
+                }
+            }
+        });
+
+        function playPipePassSound() {
+            pipePassSound.play();
+        }
+
+        function playHitSound() {
+            hitSound.play();
+        }
+
+        function playGameOverSound() {
+            gameOverSound.play();
+        }
+
+        function playLevelUpSound() {
+            levelUpSound.play();
+        }
+
+        function playFlapSound() {
+            flapSound.play();
+        }
+
+        function playSwooshSound() {
+            swooshSound.play();
+        }
+
+        function playPointSound() {
+            pointSound.play();
+        }
+
+        // Ensure all images are loaded before starting the game
+        let imagesLoaded = 0;
+        const totalImages = birdImgs.length + pipeImgs.length + backgroundImgs.length; // Total number of images to load
+
+        function onImageLoad() {
+            imagesLoaded++;
+            if (imagesLoaded === totalImages) {
+                startButton.style.display = 'block'; // Show start button after all images are loaded
+                startText.style.display = 'block'; // Show start text after all images are loaded
+                drawInitialFrame(); // Draw initial frame
+                startBirdAnimation(); // Start the bird flapping animation
+            }
+        }
+
+        function onImageError(img, defaultSrc) {
+            img.src = defaultSrc;
+            onImageLoad(); // Treat the error as a load event to not block the game
+        }
+
+        function startBirdAnimation() {
+            bird.flapOffset += bird.flapSpeed;
+            bird.y = bird.baseY + Math.sin(bird.flapOffset) * bird.flapRange;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+            drawBird();
+            
+            birdAnimationId = requestAnimationFrame(startBirdAnimation);
+        }
+
+        // Load all images for each level
+        birdImgs.forEach(src => {
+            const img = new Image();
+            img.src = src;
+            img.onload = onImageLoad;
+            img.onerror = () => onImageError(img, defaultBirdImg);
+        });
+
+        pipeImgs.forEach(src => {
+            const img = new Image();
+            img.src = src;
+            img.onload = onImageLoad;
+            img.onerror = () => onImageError(img, defaultPipeImg);
+        });
+
+        backgroundImgs.forEach(src => {
+            const img = new Image();
+            img.src = src;
+            img.onload = onImageLoad;
+            img.onerror = () => onImageError(img, defaultBackgroundImg);
+        });
+
+        // Load initial images
+        birdImg.src = birdImgs[0];
+        pipeImg.src = pipeImgs[0];
+        backgroundImg.src = backgroundImgs[0];
+    </script>
+</body>
+</html>
